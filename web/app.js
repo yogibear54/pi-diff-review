@@ -466,21 +466,23 @@ function renderTreeNode(node, depth, section) {
       badge.textContent = escapeHtml(statusLabel(status).charAt(0));
       rightSpan.appendChild(badge);
     }
-    const stageToggle = renderStageToggle(file, section === "staged");
-    rightSpan.appendChild(stageToggle);
+    if (section === "staged" || section === "changes") {
+      const stageToggle = renderStageToggle(file, section === "staged");
+      rightSpan.appendChild(stageToggle);
+    }
     if (count > 0) {
       const countBadge = document.createElement("span");
       countBadge.className = "flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[10px] font-medium text-[#c9d1d9]";
       countBadge.textContent = count;
       rightSpan.prepend(countBadge);
     }
-    const viewMode = section === "staged" ? "staged" : "unstaged";
+    const viewMode = section === "staged" ? "staged" : section === "changes" ? "unstaged" : "combined";
     button.addEventListener("click", () => openFile(file.id, viewMode));
     fileTreeEl.appendChild(button);
   }
 }
 
-function renderSearchResults(stagedFiles, changesFiles) {
+function renderSearchResults(stagedFiles, changesFiles, otherFiles) {
   if (stagedFiles.length > 0) {
     renderSectionHeader("Staged", stagedFiles.length);
     stagedFiles.forEach((file) => renderSearchResultRow(file, "staged"));
@@ -488,6 +490,10 @@ function renderSearchResults(stagedFiles, changesFiles) {
   if (changesFiles.length > 0) {
     renderSectionHeader("Changes", changesFiles.length);
     changesFiles.forEach((file) => renderSearchResultRow(file, "changes"));
+  }
+  if (otherFiles.length > 0) {
+    renderSectionHeader("Files", otherFiles.length);
+    otherFiles.forEach((file) => renderSearchResultRow(file, "files"));
   }
 }
 
@@ -521,15 +527,17 @@ function renderSearchResultRow(file, section) {
     badge.textContent = escapeHtml(statusLabel(status).charAt(0));
     rightSpan.appendChild(badge);
   }
-  const stageToggle = renderStageToggle(file, section === "staged");
-  rightSpan.appendChild(stageToggle);
+  if (section === "staged" || section === "changes") {
+    const stageToggle = renderStageToggle(file, section === "staged");
+    rightSpan.appendChild(stageToggle);
+  }
   if (count > 0) {
     const countBadge = document.createElement("span");
     countBadge.className = "flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[10px] font-medium text-[#c9d1d9]";
     countBadge.textContent = count;
     rightSpan.prepend(countBadge);
   }
-  const viewMode = section === "staged" ? "staged" : "unstaged";
+  const viewMode = section === "staged" ? "staged" : section === "changes" ? "unstaged" : "combined";
   button.addEventListener("click", () => openFile(file.id, viewMode));
   fileTreeEl.appendChild(button);
 }
@@ -604,10 +612,12 @@ function renderTree() {
   ensureActiveFileForScope();
   fileTreeEl.innerHTML = "";
 
-  const stagedFiles = getFilteredFiles().filter((f) => f.isStaged);
-  const changesFiles = getFilteredFiles().filter((f) => f.hasUnstagedChanges);
+  const filteredFiles = getFilteredFiles();
+  const stagedFiles = filteredFiles.filter((f) => f.isStaged);
+  const changesFiles = filteredFiles.filter((f) => f.hasUnstagedChanges);
+  const otherFiles = filteredFiles.filter((f) => !f.isStaged && !f.hasUnstagedChanges);
 
-  if (stagedFiles.length === 0 && changesFiles.length === 0) {
+  if (stagedFiles.length === 0 && changesFiles.length === 0 && otherFiles.length === 0) {
     const message = state.fileFilter.trim()
       ? `No files match <span class="text-review-text">${escapeHtml(state.fileFilter.trim())}</span>.`
       : `No files in <span class="text-review-text">${escapeHtml(scopeLabel(state.currentScope).toLowerCase())}</span>.`;
@@ -617,7 +627,7 @@ function renderTree() {
       </div>
     `;
   } else if (state.fileFilter.trim()) {
-    renderSearchResults(stagedFiles, changesFiles);
+    renderSearchResults(stagedFiles, changesFiles, otherFiles);
   } else {
     if (stagedFiles.length > 0) {
       renderSectionHeader("Staged", stagedFiles.length);
@@ -627,13 +637,17 @@ function renderTree() {
       renderSectionHeader("Changes", changesFiles.length);
       renderTreeNode(buildTree(changesFiles), 0, "changes");
     }
+    if (otherFiles.length > 0) {
+      renderSectionHeader("Files", otherFiles.length);
+      renderTreeNode(buildTree(otherFiles), 0, "files");
+    }
   }
 
   sidebarTitleEl.textContent = scopeLabel(state.currentScope);
   const comments = state.comments.length;
   const stagedCount = getScopedStagedFiles().length;
   const changesCount = getScopedChangesFiles().length;
-  const filteredSuffix = state.fileFilter.trim() ? ` • ${stagedFiles.length + changesFiles.length} shown` : "";
+  const filteredSuffix = state.fileFilter.trim() ? ` • ${stagedFiles.length + changesFiles.length + otherFiles.length} shown` : "";
   summaryEl.textContent = `${stagedCount} staged • ${changesCount} unstaged • ${comments} comment(s)${state.overallComment ? " • overall note" : ""}${filteredSuffix}`;
   updateToggleButtons();
   updateSidebarLayout();
