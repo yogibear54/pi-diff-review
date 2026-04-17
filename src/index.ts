@@ -225,8 +225,6 @@ export default function (pi: ExtensionAPI) {
             sendWindowMessage({ type: "file-error", requestId: "", fileId: "", scope: "git-diff", message: result.message });
             return;
           }
-          // Debug: add delay before refresh to check for race condition
-          await new Promise(resolve => setTimeout(resolve, 100));
           const { files: refreshedFiles } = await refreshFileData(pi, ctx.cwd);
           fileMap.clear();
           for (const file of refreshedFiles) {

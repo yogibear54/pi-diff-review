@@ -605,16 +605,6 @@ function renderTree() {
 
   const stagedFiles = getFilteredFiles().filter((f) => f.isStaged);
   const changesFiles = getFilteredFiles().filter((f) => f.hasUnstagedChanges);
-  console.log("[DEBUG] renderTree:", {
-    totalFiles: reviewData.files.length,
-    scopedFiles: getScopedFiles().length,
-    filteredFiles: getFilteredFiles().length,
-    stagedFiles: stagedFiles.length,
-    changesFiles: changesFiles.length,
-    allFilesDetails: reviewData.files.map(f => ({ path: f.path, isStaged: f.isStaged, hasUnstagedChanges: f.hasUnstagedChanges, inGitDiff: f.inGitDiff })),
-    stagedFilesDetails: stagedFiles.map(f => ({ path: f.path, isStaged: f.isStaged, hasUnstagedChanges: f.hasUnstagedChanges, inGitDiff: f.inGitDiff })),
-    changesFilesDetails: changesFiles.map(f => ({ path: f.path, isStaged: f.isStaged, hasUnstagedChanges: f.hasUnstagedChanges, inGitDiff: f.inGitDiff }))
-  });
 
   if (stagedFiles.length === 0 && changesFiles.length === 0) {
     const message = state.fileFilter.trim()
