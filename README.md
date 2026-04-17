@@ -7,7 +7,7 @@ It is my hope, that someone takes this idea and makes it gud.
 Native diff review window for pi, powered by [Glimpse](https://github.com/hazat/glimpse) and Monaco.
 
 ```
-pi install git:https://github.com/badlogic/pi-diff-review
+pi install git:https://github.com/yogibear54/pi-diff-review
 ```
 
 ## What it does
