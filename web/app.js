@@ -1028,6 +1028,10 @@ window.__reviewReceive = function (message) {
 
   if (message.type === "files-refresh") {
     reviewData.files = message.files;
+    // Clear file content caches since git state has changed
+    state.fileContents = {};
+    state.fileErrors = {};
+    state.pendingRequestIds = {};
     state.activeFileId = null;
     ensureActiveFileForScope();
     renderAll({ restoreFileScroll: true });

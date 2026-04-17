@@ -366,9 +366,7 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
 }
 
 async function getStagedContent(pi: ExtensionAPI, repoRoot: string, path: string): Promise<string> {
-  console.log(`[DEBUG] getStagedContent: path=${path}`);
   const result = await pi.exec("git", ["show", `:${path}`], { cwd: repoRoot });
-  console.log(`[DEBUG] getStagedContent result: code=${result.code}, stdout.length=${result.stdout.length}`);
   if (result.code !== 0) {
     return "";
   }
@@ -382,7 +380,6 @@ export async function loadReviewFileContents(
   scope: ReviewScope,
   viewMode: ReviewViewMode
 ): Promise<ReviewFileContents> {
-  console.log(`[DEBUG] load: path=${file.path}, viewMode=${viewMode}, hasWorkingTreeFile=${file.hasWorkingTreeFile}`);
   if (scope === "all-files") {
     const content = file.hasWorkingTreeFile ? await getWorkingTreeContent(repoRoot, file.path) : "";
     return {
@@ -408,13 +405,11 @@ export async function loadReviewFileContents(
 
   // scope === "git-diff" - handle view modes
   const path = comparison.newPath ?? comparison.oldPath ?? file.path;
-  console.log(`[DEBUG] comparison: newPath=${comparison.newPath}, oldPath=${comparison.oldPath}, path=${path}`);
 
   if (viewMode === "staged") {
     // Staged view: HEAD vs index (staged content)
     const originalContent = comparison.oldPath == null ? "" : await getRevisionContent(pi, repoRoot, "HEAD", comparison.oldPath);
     const modifiedContent = await getStagedContent(pi, repoRoot, path);
-    console.log(`[DEBUG] staged: original='${originalContent.slice(0, 50)}', modified='${modifiedContent.slice(0, 50)}'`);
     return { originalContent, modifiedContent };
   }
 
@@ -422,7 +417,6 @@ export async function loadReviewFileContents(
     // Unstaged view: index vs working tree
     const originalContent = await getStagedContent(pi, repoRoot, path);
     const modifiedContent = comparison.newPath == null ? "" : await getWorkingTreeContent(repoRoot, comparison.newPath);
-    console.log(`[DEBUG] unstaged: original='${originalContent.slice(0, 50)}', modified='${modifiedContent.slice(0, 50)}'`);
     return { originalContent, modifiedContent };
   }
 
@@ -431,7 +425,6 @@ export async function loadReviewFileContents(
   const modifiedContent = comparison.newPath == null
     ? ""
     : await getWorkingTreeContent(repoRoot, comparison.newPath);
-  console.log(`[DEBUG] combined: original='${originalContent.slice(0, 50)}', modified='${modifiedContent.slice(0, 50)}'`);
   return { originalContent, modifiedContent };
 }
 
