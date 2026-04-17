@@ -151,12 +151,12 @@ export default function (pi: ExtensionAPI) {
       window.send(`window.__reviewReceive(${payload});`);
     };
 
-    const loadContents = (file: ReviewFile, scope: ReviewRequestFilePayload["scope"]): Promise<ReviewFileContents> => {
-      const cacheKey = `${scope}:${file.id}`;
+    const loadContents = (file: ReviewFile, scope: ReviewRequestFilePayload["scope"], viewMode: ReviewRequestFilePayload["viewMode"]): Promise<ReviewFileContents> => {
+      const cacheKey = `${scope}:${viewMode}:${file.id}`;
       const cached = contentCache.get(cacheKey);
       if (cached != null) return cached;
 
-      const pending = loadReviewFileContents(pi, repoRoot, file, scope);
+      const pending = loadReviewFileContents(pi, repoRoot, file, scope, viewMode);
       contentCache.set(cacheKey, pending);
       return pending;
     };
@@ -197,12 +197,13 @@ export default function (pi: ExtensionAPI) {
           }
 
           try {
-            const contents = await loadContents(file, message.scope);
+            const contents = await loadContents(file, message.scope, message.viewMode);
             sendWindowMessage({
               type: "file-data",
               requestId: message.requestId,
               fileId: message.fileId,
               scope: message.scope,
+              viewMode: message.viewMode,
               originalContent: contents.originalContent,
               modifiedContent: contents.modifiedContent,
             });

@@ -1,5 +1,7 @@
 export type ReviewScope = "git-diff" | "last-commit" | "all-files";
 
+export type ReviewViewMode = "staged" | "unstaged" | "combined";
+
 export type ChangeStatus = "modified" | "added" | "deleted" | "renamed";
 
 export interface ReviewFileComparison {
@@ -35,6 +37,7 @@ export interface DiffReviewComment {
   id: string;
   fileId: string;
   scope: ReviewScope;
+  viewMode: ReviewViewMode;
   side: CommentSide;
   startLine: number | null;
   endLine: number | null;
@@ -56,6 +59,7 @@ export interface ReviewRequestFilePayload {
   requestId: string;
   fileId: string;
   scope: ReviewScope;
+  viewMode: ReviewViewMode;
 }
 
 export interface ReviewStagePayload {
@@ -71,6 +75,7 @@ export interface ReviewFileDataMessage {
   requestId: string;
   fileId: string;
   scope: ReviewScope;
+  viewMode: ReviewViewMode;
   originalContent: string;
   modifiedContent: string;
 }

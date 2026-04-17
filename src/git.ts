@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { ChangeStatus, ReviewFile, ReviewFileComparison, ReviewFileContents, ReviewScope } from "./types.js";
+import type { ChangeStatus, ReviewFile, ReviewFileComparison, ReviewFileContents, ReviewScope, ReviewViewMode } from "./types.js";
 
 interface ChangedPath {
   status: ChangeStatus;
@@ -361,7 +361,21 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
   return { repoRoot, files };
 }
 
-export async function loadReviewFileContents(pi: ExtensionAPI, repoRoot: string, file: ReviewFile, scope: ReviewScope): Promise<ReviewFileContents> {
+async function getStagedContent(pi: ExtensionAPI, repoRoot: string, path: string): Promise<string> {
+  const result = await pi.exec("git", ["show", `:${path}`], { cwd: repoRoot });
+  if (result.code !== 0) {
+    return "";
+  }
+  return result.stdout;
+}
+
+export async function loadReviewFileContents(
+  pi: ExtensionAPI,
+  repoRoot: string,
+  file: ReviewFile,
+  scope: ReviewScope,
+  viewMode: ReviewViewMode
+): Promise<ReviewFileContents> {
   if (scope === "all-files") {
     const content = file.hasWorkingTreeFile ? await getWorkingTreeContent(repoRoot, file.path) : "";
     return {
@@ -378,20 +392,36 @@ export async function loadReviewFileContents(pi: ExtensionAPI, repoRoot: string,
     };
   }
 
-  const originalRevision = scope === "git-diff" ? "HEAD" : "HEAD^";
-  const modifiedRevision = scope === "git-diff" ? null : "HEAD";
+  // For last-commit scope, viewMode doesn't apply - always show HEAD^ vs HEAD
+  if (scope === "last-commit") {
+    const originalContent = comparison.oldPath == null ? "" : await getRevisionContent(pi, repoRoot, "HEAD^", comparison.oldPath);
+    const modifiedContent = comparison.newPath == null ? "" : await getRevisionContent(pi, repoRoot, "HEAD", comparison.newPath);
+    return { originalContent, modifiedContent };
+  }
 
-  const originalContent = comparison.oldPath == null ? "" : await getRevisionContent(pi, repoRoot, originalRevision, comparison.oldPath);
+  // scope === "git-diff" - handle view modes
+  const path = comparison.newPath ?? comparison.oldPath ?? file.path;
+  
+  if (viewMode === "staged") {
+    // Staged view: HEAD vs index (staged content)
+    const originalContent = comparison.oldPath == null ? "" : await getRevisionContent(pi, repoRoot, "HEAD", comparison.oldPath);
+    const modifiedContent = await getStagedContent(pi, repoRoot, path);
+    return { originalContent, modifiedContent };
+  }
+  
+  if (viewMode === "unstaged") {
+    // Unstaged view: index vs working tree
+    const originalContent = await getStagedContent(pi, repoRoot, path);
+    const modifiedContent = comparison.newPath == null ? "" : await getWorkingTreeContent(repoRoot, comparison.newPath);
+    return { originalContent, modifiedContent };
+  }
+  
+  // viewMode === "combined" (default): HEAD vs working tree
+  const originalContent = comparison.oldPath == null ? "" : await getRevisionContent(pi, repoRoot, "HEAD", comparison.oldPath);
   const modifiedContent = comparison.newPath == null
     ? ""
-    : modifiedRevision == null
-      ? await getWorkingTreeContent(repoRoot, comparison.newPath)
-      : await getRevisionContent(pi, repoRoot, modifiedRevision, comparison.newPath);
-
-  return {
-    originalContent,
-    modifiedContent,
-  };
+    : await getWorkingTreeContent(repoRoot, comparison.newPath);
+  return { originalContent, modifiedContent };
 }
 
 export interface StageResult {

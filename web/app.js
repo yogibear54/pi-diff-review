@@ -2,6 +2,7 @@ const reviewData = JSON.parse(document.getElementById("diff-review-data").textCo
 
 const state = {
   activeFileId: null,
+  activeViewMode: "combined", // "staged" | "unstaged" | "combined"
   currentScope: reviewData.files.some((file) => file.inGitDiff)
     ? "git-diff"
     : reviewData.files.some((file) => file.inLastCommit)
@@ -290,19 +291,19 @@ function buildTree(files) {
   return root;
 }
 
-function cacheKey(scope, fileId) {
-  return `${scope}:${fileId}`;
+function cacheKey(scope, viewMode, fileId) {
+  return `${scope}:${viewMode}:${fileId}`;
 }
 
-function scrollKey(scope, fileId) {
-  return `${scope}:${fileId}`;
+function scrollKey(scope, viewMode, fileId) {
+  return `${scope}:${viewMode}:${fileId}`;
 }
 
 function saveCurrentScrollPosition() {
   if (!diffEditor || !state.activeFileId) return;
   const originalEditor = diffEditor.getOriginalEditor();
   const modifiedEditor = diffEditor.getModifiedEditor();
-  state.scrollPositions[scrollKey(state.currentScope, state.activeFileId)] = {
+  state.scrollPositions[scrollKey(state.currentScope, state.activeViewMode, state.activeFileId)] = {
     originalTop: originalEditor.getScrollTop(),
     originalLeft: originalEditor.getScrollLeft(),
     modifiedTop: modifiedEditor.getScrollTop(),
@@ -312,7 +313,7 @@ function saveCurrentScrollPosition() {
 
 function restoreFileScrollPosition() {
   if (!diffEditor || !state.activeFileId) return;
-  const scrollState = state.scrollPositions[scrollKey(state.currentScope, state.activeFileId)];
+  const scrollState = state.scrollPositions[scrollKey(state.currentScope, state.activeViewMode, state.activeFileId)];
   if (!scrollState) return;
   const originalEditor = diffEditor.getOriginalEditor();
   const modifiedEditor = diffEditor.getModifiedEditor();
@@ -344,8 +345,8 @@ function restoreScrollState(scrollState) {
   modifiedEditor.setScrollLeft(scrollState.modifiedLeft);
 }
 
-function getRequestState(fileId, scope = state.currentScope) {
-  const key = cacheKey(scope, fileId);
+function getRequestState(fileId, scope = state.currentScope, viewMode = state.activeViewMode) {
+  const key = cacheKey(scope, viewMode, fileId);
   return {
     contents: state.fileContents[key],
     error: state.fileErrors[key],
@@ -353,9 +354,9 @@ function getRequestState(fileId, scope = state.currentScope) {
   };
 }
 
-function ensureFileLoaded(fileId, scope = state.currentScope) {
+function ensureFileLoaded(fileId, scope = state.currentScope, viewMode = state.activeViewMode) {
   if (!fileId) return;
-  const key = cacheKey(scope, fileId);
+  const key = cacheKey(scope, viewMode, fileId);
   if (state.fileContents[key] != null) return;
   if (state.fileErrors[key] != null) return;
   if (state.pendingRequestIds[key] != null) return;
@@ -364,19 +365,20 @@ function ensureFileLoaded(fileId, scope = state.currentScope) {
   state.pendingRequestIds[key] = requestId;
   renderTree();
   if (window.glimpse?.send) {
-    window.glimpse.send({ type: "request-file", requestId, fileId, scope });
+    window.glimpse.send({ type: "request-file", requestId, fileId, scope, viewMode });
   }
 }
 
-function openFile(fileId) {
-  if (state.activeFileId === fileId) {
-    ensureFileLoaded(fileId, state.currentScope);
+function openFile(fileId, viewMode = "combined") {
+  if (state.activeFileId === fileId && state.activeViewMode === viewMode) {
+    ensureFileLoaded(fileId, state.currentScope, viewMode);
     return;
   }
   saveCurrentScrollPosition();
   state.activeFileId = fileId;
+  state.activeViewMode = viewMode;
   renderAll({ restoreFileScroll: true });
-  ensureFileLoaded(fileId, state.currentScope);
+  ensureFileLoaded(fileId, state.currentScope, viewMode);
 }
 
 function renderSectionHeader(title, count) {
@@ -436,7 +438,7 @@ function renderTreeNode(node, depth, section) {
     }
 
     const file = child.file;
-    const count = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope).length;
+    const count = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.viewMode === state.activeViewMode).length;
     const reviewed = isFileReviewed(file.id);
     const requestState = getRequestState(file.id, state.currentScope);
     const loading = requestState.requestId != null && requestState.contents == null;
@@ -471,7 +473,8 @@ function renderTreeNode(node, depth, section) {
       countBadge.textContent = count;
       rightSpan.prepend(countBadge);
     }
-    button.addEventListener("click", () => openFile(file.id));
+    const viewMode = section === "staged" ? "staged" : "unstaged";
+    button.addEventListener("click", () => openFile(file.id, viewMode));
     fileTreeEl.appendChild(button);
   }
 }
@@ -491,7 +494,7 @@ function renderSearchResultRow(file, section) {
   const path = getFileSearchPath(file);
   const baseName = getBaseName(path);
   const parentPath = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-  const count = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope).length;
+  const count = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.viewMode === state.activeViewMode).length;
   const reviewed = isFileReviewed(file.id);
   const requestState = getRequestState(file.id, state.currentScope);
   const loading = requestState.requestId != null && requestState.contents == null;
@@ -525,7 +528,8 @@ function renderSearchResultRow(file, section) {
     countBadge.textContent = count;
     rightSpan.prepend(countBadge);
   }
-  button.addEventListener("click", () => openFile(file.id));
+  const viewMode = section === "staged" ? "staged" : "unstaged";
+  button.addEventListener("click", () => openFile(file.id, viewMode));
   fileTreeEl.appendChild(button);
 }
 
@@ -769,7 +773,7 @@ function syncViewZones() {
 
   const originalEditor = diffEditor.getOriginalEditor();
   const modifiedEditor = diffEditor.getModifiedEditor();
-  const inlineComments = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.side !== "file");
+  const inlineComments = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.viewMode === state.activeViewMode && comment.side !== "file");
 
   inlineComments.forEach((item) => {
     const editor = item.side === "original" ? originalEditor : modifiedEditor;
@@ -793,7 +797,7 @@ function syncViewZones() {
 function updateDecorations() {
   if (!diffEditor || !monacoApi) return;
   const file = activeFile();
-  const comments = file ? state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.side !== "file") : [];
+  const comments = file ? state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.viewMode === state.activeViewMode && comment.side !== "file") : [];
   const originalRanges = [];
   const modifiedRanges = [];
 
@@ -822,7 +826,7 @@ function renderFileComments() {
     return;
   }
 
-  const fileComments = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.side === "file");
+  const fileComments = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope && comment.viewMode === state.activeViewMode && comment.side === "file");
 
   if (fileComments.length === 0) {
     fileCommentsContainer.className = "hidden overflow-hidden px-0 py-0";
@@ -946,6 +950,7 @@ function createGlyphHoverActions(editor, side) {
       id: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
       fileId: file.id,
       scope: state.currentScope,
+      viewMode: state.activeViewMode,
       side,
       startLine: line,
       endLine: line,
@@ -994,7 +999,8 @@ function createGlyphHoverActions(editor, side) {
 
 window.__reviewReceive = function (message) {
   if (!message || typeof message !== "object") return;
-  const key = cacheKey(message.scope, message.fileId);
+  const viewMode = message.viewMode || "combined";
+  const key = cacheKey(message.scope, viewMode, message.fileId);
 
   if (message.type === "file-data") {
     state.fileContents[key] = {
@@ -1004,7 +1010,7 @@ window.__reviewReceive = function (message) {
     delete state.fileErrors[key];
     delete state.pendingRequestIds[key];
     renderTree();
-    if (state.activeFileId === message.fileId && state.currentScope === message.scope) {
+    if (state.activeFileId === message.fileId && state.currentScope === message.scope && state.activeViewMode === viewMode) {
       mountFile({ restoreFileScroll: true });
     }
     return;
@@ -1014,7 +1020,7 @@ window.__reviewReceive = function (message) {
     state.fileErrors[key] = message.message || "Unknown error";
     delete state.pendingRequestIds[key];
     renderTree();
-    if (state.activeFileId === message.fileId && state.currentScope === message.scope) {
+    if (state.activeFileId === message.fileId && state.currentScope === message.scope && state.activeViewMode === viewMode) {
       mountFile({ preserveScroll: false });
     }
     return;
