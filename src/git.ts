@@ -367,6 +367,7 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
 
 async function getStagedContent(pi: ExtensionAPI, repoRoot: string, path: string): Promise<string> {
   const result = await pi.exec("git", ["show", `:${path}`], { cwd: repoRoot });
+  console.log(`[DEBUG] getStagedContent(${path}): code=${result.code}, stdout.length=${result.stdout?.length ?? 0}`);
   if (result.code !== 0) {
     return "";
   }
@@ -380,6 +381,7 @@ export async function loadReviewFileContents(
   scope: ReviewScope,
   viewMode: ReviewViewMode
 ): Promise<ReviewFileContents> {
+  console.log(`[DEBUG] loadReviewFileContents: path=${file.path}, scope=${scope}, viewMode=${viewMode}`);
   if (scope === "all-files") {
     const content = file.hasWorkingTreeFile ? await getWorkingTreeContent(repoRoot, file.path) : "";
     return {
@@ -410,21 +412,24 @@ export async function loadReviewFileContents(
     // Staged view: HEAD vs index (staged content)
     const originalContent = comparison.oldPath == null ? "" : await getRevisionContent(pi, repoRoot, "HEAD", comparison.oldPath);
     const modifiedContent = await getStagedContent(pi, repoRoot, path);
+    console.log(`[DEBUG] staged view: path=${path}, original.length=${originalContent.length}, modified.length=${modifiedContent.length}`);
     return { originalContent, modifiedContent };
   }
-  
+
   if (viewMode === "unstaged") {
     // Unstaged view: index vs working tree
     const originalContent = await getStagedContent(pi, repoRoot, path);
     const modifiedContent = comparison.newPath == null ? "" : await getWorkingTreeContent(repoRoot, comparison.newPath);
+    console.log(`[DEBUG] unstaged view: path=${path}, original.length=${originalContent.length}, modified.length=${modifiedContent.length}`);
     return { originalContent, modifiedContent };
   }
-  
+
   // viewMode === "combined" (default): HEAD vs working tree
   const originalContent = comparison.oldPath == null ? "" : await getRevisionContent(pi, repoRoot, "HEAD", comparison.oldPath);
   const modifiedContent = comparison.newPath == null
     ? ""
     : await getWorkingTreeContent(repoRoot, comparison.newPath);
+  console.log(`[DEBUG] combined view: path=${path}, original.length=${originalContent.length}, modified.length=${modifiedContent.length}`);
   return { originalContent, modifiedContent };
 }
 
