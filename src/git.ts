@@ -1,5 +1,11 @@
-import { readFile } from "node:fs/promises";
+import { readFile, appendFile } from "node:fs/promises";
 import { extname, join } from "node:path";
+
+const DEBUG_LOG = "/tmp/pi-diff-review-debug.log";
+async function debugLog(...args: unknown[]): Promise<void> {
+  const line = args.map(a => typeof a === "string" ? a : JSON.stringify(a)).join(" ") + "\n";
+  await appendFile(DEBUG_LOG, `[${new Date().toISOString()}] ${line}`);
+}
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { ChangeStatus, ReviewFile, ReviewFileComparison, ReviewFileContents, ReviewScope, ReviewViewMode } from "./types.js";
 
@@ -33,6 +39,7 @@ async function runGit(pi: ExtensionAPI, repoRoot: string, args: string[]): Promi
 async function runGitAllowFailure(pi: ExtensionAPI, repoRoot: string, args: string[]): Promise<string> {
   const result = await pi.exec("git", args, { cwd: repoRoot });
   if (result.code !== 0) {
+    console.log(`[DEBUG] git ${args.join(" ")} failed:`, result.stderr);
     return "";
   }
   return result.stdout;
@@ -267,20 +274,33 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
   const trackedDiffOutput = repositoryHasHead
     ? await runGit(pi, repoRoot, ["diff", "--find-renames", "-M", "--name-status", "HEAD", "--"])
     : "";
+  await debugLog("trackedDiffOutput (HEAD vs working):", trackedDiffOutput);
   const stagedDiffOutput = repositoryHasHead
     ? await runGit(pi, repoRoot, ["diff", "--cached", "--find-renames", "-M", "--name-status"])
     : "";
-  const unstagedDiffOutput = await runGitAllowFailure(pi, repoRoot, ["diff", "--find-renames", "-M", "--name-status"]);
+  await debugLog("stagedDiffOutput:", stagedDiffOutput);
+  await debugLog("repoRoot:", repoRoot);
+  const unstagedDiffOutput = await runGitAllowFailure(pi, repoRoot, ["diff", "--find-renames", "-M", "--name-status", "--"]);
+  await debugLog("unstagedDiffOutput:", unstagedDiffOutput);
+  const testUnstaged = await runGitAllowFailure(pi, repoRoot, ["diff", "--name-status"]);
+  await debugLog("testUnstaged (no --):", testUnstaged);
+  const testUnstagedSimple = await runGitAllowFailure(pi, repoRoot, ["diff", "--name-only"]);
+  await debugLog("testUnstagedSimple (name-only):", testUnstagedSimple);
+  const testStatus = await runGitAllowFailure(pi, repoRoot, ["status", "--porcelain"]);
+  await debugLog("testStatus (porcelain):", testStatus);
   const stagedPaths = new Set(
     parseNameStatus(stagedDiffOutput)
       .map((change) => change.newPath ?? change.oldPath)
       .filter((path) => path != null)
   );
+  const unstagedParsed = parseNameStatus(unstagedDiffOutput);
+  await debugLog("unstagedParsed:", unstagedParsed);
   const unstagedPaths = new Set(
-    parseNameStatus(unstagedDiffOutput)
+    unstagedParsed
       .map((change) => change.newPath ?? change.oldPath)
       .filter((path) => path != null)
   );
+  await debugLog("unstagedPaths:", [...unstagedPaths]);
   const untrackedOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--others", "--exclude-standard"]);
   const trackedFilesOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--cached"]);
   const deletedFilesOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--deleted"]);
@@ -353,10 +373,19 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
     seeds.get(path)!.isStaged = stagedPaths.has(path);
     seeds.get(path)!.hasUnstagedChanges = unstagedPaths.has(path);
   }
+  
+  // Debug: check TEST.md specifically
+  await debugLog("all seed paths:", [...seeds.keys()].filter(p => p.includes("TEST")));
+  const testMdSeed = seeds.get("pdf-extractor-analyzer/TEST.md");
+  await debugLog("TEST.md seed:", testMdSeed ? { isStaged: testMdSeed.isStaged, hasUnstagedChanges: testMdSeed.hasUnstagedChanges, inGitDiff: testMdSeed.inGitDiff } : "NOT FOUND");
 
   const files = [...seeds.values()]
     .map(createReviewFile)
     .sort(compareReviewFiles);
+  
+  // Debug: check final TEST.md file
+  const testMdFile = files.find(f => f.path.includes("TEST.md"));
+  await debugLog("TEST.md final file:", testMdFile ? { isStaged: testMdFile.isStaged, hasUnstagedChanges: testMdFile.hasUnstagedChanges, inGitDiff: testMdFile.inGitDiff } : "NOT FOUND");
 
   return { repoRoot, files };
 }
