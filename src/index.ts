@@ -14,6 +14,7 @@ import type {
   ReviewFileContents,
   ReviewHostMessage,
   ReviewRequestFilePayload,
+  ReviewRefreshPayload,
   ReviewStagePayload,
   ReviewSubmitPayload,
   ReviewWindowMessage,
@@ -34,6 +35,10 @@ function isRequestFilePayload(value: ReviewWindowMessage): value is ReviewReques
 
 function isStagePayload(value: ReviewWindowMessage): value is ReviewStagePayload {
   return value.type === "stage";
+}
+
+function isRefreshPayload(value: ReviewWindowMessage): value is ReviewRefreshPayload {
+  return value.type === "refresh-files";
 }
 
 type WaitingEditorResult = "escape" | "window-settled";
@@ -219,12 +224,7 @@ export default function (pi: ExtensionAPI) {
           }
         };
 
-        const handleStage = async (message: ReviewStagePayload): Promise<void> => {
-          const result = await stageFile(pi, repoRoot, message.path, message.action);
-          if (!result.success) {
-            sendWindowMessage({ type: "file-error", requestId: "", fileId: "", scope: "git-diff", message: result.message });
-            return;
-          }
+        const handleRefresh = async (): Promise<void> => {
           const { files: refreshedFiles } = await refreshFileData(pi, ctx.cwd);
           fileMap.clear();
           for (const file of refreshedFiles) {
@@ -232,6 +232,15 @@ export default function (pi: ExtensionAPI) {
           }
           contentCache.clear();
           sendWindowMessage({ type: "files-refresh", files: refreshedFiles });
+        };
+
+        const handleStage = async (message: ReviewStagePayload): Promise<void> => {
+          const result = await stageFile(pi, repoRoot, message.path, message.action);
+          if (!result.success) {
+            sendWindowMessage({ type: "file-error", requestId: "", fileId: "", scope: "git-diff", message: result.message });
+            return;
+          }
+          await handleRefresh();
         };
 
         const onMessage = (data: unknown): void => {
@@ -242,6 +251,10 @@ export default function (pi: ExtensionAPI) {
           }
           if (isStagePayload(message)) {
             void handleStage(message);
+            return;
+          }
+          if (isRefreshPayload(message)) {
+            void handleRefresh();
             return;
           }
           if (isSubmitPayload(message) || isCancelPayload(message)) {

@@ -68,7 +68,16 @@ export interface ReviewStagePayload {
   action: "add" | "reset";
 }
 
-export type ReviewWindowMessage = ReviewSubmitPayload | ReviewCancelPayload | ReviewRequestFilePayload | ReviewStagePayload;
+export interface ReviewRefreshPayload {
+  type: "refresh-files";
+}
+
+export type ReviewWindowMessage =
+  | ReviewSubmitPayload
+  | ReviewCancelPayload
+  | ReviewRequestFilePayload
+  | ReviewStagePayload
+  | ReviewRefreshPayload;
 
 export interface ReviewFileDataMessage {
   type: "file-data";

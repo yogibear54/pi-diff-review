@@ -146,7 +146,10 @@
     <div class="border-b border-review-border px-4 py-3">
       <div class="mb-2 flex items-center justify-between gap-2">
         <div id="sidebar-title" class="text-[11px] font-semibold uppercase tracking-wider text-review-muted">Files</div>
-        <div class="text-[10px] text-review-muted">Fuzzy filter</div>
+        <div class="flex items-center gap-2">
+          <div class="text-[10px] text-review-muted">Fuzzy filter</div>
+          <button id="sidebar-refresh-button" class="cursor-pointer rounded-md border border-review-border bg-review-panel px-2 py-0.5 text-[10px] font-medium text-review-text hover:bg-[#21262d]">Refresh</button>
+        </div>
       </div>
       <div class="mb-3 flex flex-wrap items-center gap-2">
         <button id="scope-diff-button" class="cursor-pointer rounded-md border border-review-border bg-review-panel px-2.5 py-1 text-[11px] font-medium text-review-text hover:bg-[#21262d]">Git diff</button>

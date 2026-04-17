@@ -25,6 +25,7 @@ const state = {
 const sidebarEl = document.getElementById("sidebar");
 const sidebarTitleEl = document.getElementById("sidebar-title");
 const sidebarSearchInputEl = document.getElementById("sidebar-search-input");
+const sidebarRefreshButton = document.getElementById("sidebar-refresh-button");
 const toggleSidebarButton = document.getElementById("toggle-sidebar-button");
 const scopeDiffButton = document.getElementById("scope-diff-button");
 const scopeLastCommitButton = document.getElementById("scope-last-commit-button");
@@ -1180,6 +1181,12 @@ toggleSidebarButton.addEventListener("click", () => {
     layoutEditor();
     setTimeout(layoutEditor, 50);
   });
+});
+
+sidebarRefreshButton.addEventListener("click", () => {
+  if (window.glimpse?.send) {
+    window.glimpse.send({ type: "refresh-files" });
+  }
 });
 
 sidebarSearchInputEl.addEventListener("input", () => {
