@@ -132,6 +132,14 @@ function getScopedFiles() {
   }
 }
 
+function getScopedStagedFiles() {
+  return getScopedFiles().filter((file) => file.isStaged);
+}
+
+function getScopedChangesFiles() {
+  return getScopedFiles().filter((file) => file.hasUnstagedChanges);
+}
+
 function ensureActiveFileForScope() {
   const scopedFiles = getScopedFiles();
   if (scopedFiles.length === 0) {
@@ -371,7 +379,33 @@ function openFile(fileId) {
   ensureFileLoaded(fileId, state.currentScope);
 }
 
-function renderTreeNode(node, depth) {
+function renderSectionHeader(title, count) {
+  const header = document.createElement("div");
+  header.className = "sticky top-0 z-10 flex items-center gap-1.5 bg-[#0d1117] px-2 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-[#8b949e]";
+  header.innerHTML = `
+    <span>${escapeHtml(title)}</span>
+    <span class="rounded bg-[#21262d] px-1.5 py-0.5 text-[10px] font-medium text-[#c9d1d9]">${count}</span>
+  `;
+  fileTreeEl.appendChild(header);
+}
+
+function renderStageToggle(file, isStaged) {
+  const sign = isStaged ? "−" : "+";
+  const title = isStaged ? "Unstage file" : "Stage file";
+  const span = document.createElement("span");
+  span.className = "flex h-4 w-4 shrink-0 cursor-pointer items-center justify-center rounded text-sm font-bold text-[#8b949e] hover:bg-[#30363d] hover:text-[#c9d1d9]";
+  span.textContent = sign;
+  span.title = title;
+  span.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (window.glimpse?.send) {
+      window.glimpse.send({ type: "stage", path: file.path, action: isStaged ? "reset" : "add" });
+    }
+  });
+  return span;
+}
+
+function renderTreeNode(node, depth, section) {
   const children = [...node.children.values()].sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -397,7 +431,7 @@ function renderTreeNode(node, depth) {
         renderTree();
       });
       fileTreeEl.appendChild(row);
-      if (!collapsed) renderTreeNode(child, depth + 1);
+      if (!collapsed) renderTreeNode(child, depth + 1, section);
       continue;
     }
 
@@ -407,7 +441,6 @@ function renderTreeNode(node, depth) {
     const requestState = getRequestState(file.id, state.currentScope);
     const loading = requestState.requestId != null && requestState.contents == null;
     const errored = requestState.error != null;
-    const status = getActiveStatus(file);
     const button = document.createElement("button");
     button.type = "button";
     button.className = [
@@ -416,53 +449,84 @@ function renderTreeNode(node, depth) {
     ].join(" ");
     button.style.paddingLeft = `${(depth * indentPx) + 26}px`;
     button.innerHTML = `
-      <span class="flex min-w-0 items-center gap-1.5 truncate ${file.id === state.activeFileId ? "font-medium" : ""}">
+      <span style="min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:6px;">
         <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : "●"}</span>
-        <span class="truncate">${escapeHtml(child.name)}</span>
+        <span class="truncate ${file.id === state.activeFileId ? "font-medium" : ""}">${escapeHtml(child.name)}</span>
       </span>
-      <span class="flex shrink-0 items-center gap-1.5">
-        ${count > 0 ? `<span class="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[10px] font-medium text-[#c9d1d9]">${count}</span>` : ""}
-        ${status ? `<span class="font-medium ${statusBadgeClass(status)}">${escapeHtml(statusLabel(status).charAt(0))}</span>` : ""}
-      </span>
+      <span data-right class="flex shrink-0 items-center gap-1.5"></span>
     `;
+    const status = getActiveStatus(file);
+    const rightSpan = button.querySelector("[data-right]");
+    if (status) {
+      const badge = document.createElement("span");
+      badge.className = `font-medium ${statusBadgeClass(status)}`;
+      badge.textContent = escapeHtml(statusLabel(status).charAt(0));
+      rightSpan.appendChild(badge);
+    }
+    const stageToggle = renderStageToggle(file, section === "staged");
+    rightSpan.appendChild(stageToggle);
+    if (count > 0) {
+      const countBadge = document.createElement("span");
+      countBadge.className = "flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[10px] font-medium text-[#c9d1d9]";
+      countBadge.textContent = count;
+      rightSpan.prepend(countBadge);
+    }
     button.addEventListener("click", () => openFile(file.id));
     fileTreeEl.appendChild(button);
   }
 }
 
-function renderSearchResults(files) {
-  files.forEach((file) => {
-    const path = getFileSearchPath(file);
-    const baseName = getBaseName(path);
-    const parentPath = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-    const count = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope).length;
-    const reviewed = isFileReviewed(file.id);
-    const requestState = getRequestState(file.id, state.currentScope);
-    const loading = requestState.requestId != null && requestState.contents == null;
-    const errored = requestState.error != null;
-    const status = getActiveStatus(file);
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = [
-      "group flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left",
-      file.id === state.activeFileId ? "bg-[#373e47] text-white" : "text-[#c9d1d9] hover:bg-[#21262d]",
-    ].join(" ");
-    button.innerHTML = `
-      <span class="min-w-0 flex-1">
-        <span class="flex items-center gap-1.5">
-          <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : "●"}</span>
-          <span class="truncate text-[13px] ${file.id === state.activeFileId ? "font-medium" : ""}">${escapeHtml(baseName)}</span>
-        </span>
-        <span class="mt-0.5 block truncate pl-[14px] text-[11px] ${file.id === state.activeFileId ? "text-[#c9d1d9]" : "text-review-muted"}">${escapeHtml(parentPath || path)}</span>
-      </span>
-      <span class="flex shrink-0 items-center gap-1.5">
-        ${count > 0 ? `<span class="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[10px] font-medium text-[#c9d1d9]">${count}</span>` : ""}
-        ${status ? `<span class="font-medium ${statusBadgeClass(status)}">${escapeHtml(statusLabel(status).charAt(0))}</span>` : ""}
-      </span>
-    `;
-    button.addEventListener("click", () => openFile(file.id));
-    fileTreeEl.appendChild(button);
-  });
+function renderSearchResults(stagedFiles, changesFiles) {
+  if (stagedFiles.length > 0) {
+    renderSectionHeader("Staged", stagedFiles.length);
+    stagedFiles.forEach((file) => renderSearchResultRow(file, "staged"));
+  }
+  if (changesFiles.length > 0) {
+    renderSectionHeader("Changes", changesFiles.length);
+    changesFiles.forEach((file) => renderSearchResultRow(file, "changes"));
+  }
+}
+
+function renderSearchResultRow(file, section) {
+  const path = getFileSearchPath(file);
+  const baseName = getBaseName(path);
+  const parentPath = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  const count = state.comments.filter((comment) => comment.fileId === file.id && comment.scope === state.currentScope).length;
+  const reviewed = isFileReviewed(file.id);
+  const requestState = getRequestState(file.id, state.currentScope);
+  const loading = requestState.requestId != null && requestState.contents == null;
+  const errored = requestState.error != null;
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = [
+    "group flex w-full items-center justify-between gap-3 rounded-md px-2 py-2 text-left",
+    file.id === state.activeFileId ? "bg-[#373e47] text-white" : "text-[#c9d1d9] hover:bg-[#21262d]",
+  ].join(" ");
+  button.innerHTML = `
+    <span style="min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:6px;">
+      <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : "●"}</span>
+      <span class="truncate text-[13px] ${file.id === state.activeFileId ? "font-medium" : ""}">${escapeHtml(baseName)}</span>
+    </span>
+    <span data-right class="flex shrink-0 items-center gap-1.5"></span>
+  `;
+  const status = getActiveStatus(file);
+  const rightSpan = button.querySelector("[data-right]");
+  if (status) {
+    const badge = document.createElement("span");
+    badge.className = `font-medium ${statusBadgeClass(status)}`;
+    badge.textContent = escapeHtml(statusLabel(status).charAt(0));
+    rightSpan.appendChild(badge);
+  }
+  const stageToggle = renderStageToggle(file, section === "staged");
+  rightSpan.appendChild(stageToggle);
+  if (count > 0) {
+    const countBadge = document.createElement("span");
+    countBadge.className = "flex h-4 min-w-[16px] items-center justify-center rounded-full bg-[#1f2937] px-1 text-[10px] font-medium text-[#c9d1d9]";
+    countBadge.textContent = count;
+    rightSpan.prepend(countBadge);
+  }
+  button.addEventListener("click", () => openFile(file.id));
+  fileTreeEl.appendChild(button);
 }
 
 function updateSidebarLayout() {
@@ -534,10 +598,11 @@ function applyEditorOptions() {
 function renderTree() {
   ensureActiveFileForScope();
   fileTreeEl.innerHTML = "";
-  const scopedFiles = getScopedFiles();
-  const visibleFiles = getFilteredFiles();
 
-  if (visibleFiles.length === 0) {
+  const stagedFiles = getFilteredFiles().filter((f) => f.isStaged);
+  const changesFiles = getFilteredFiles().filter((f) => f.hasUnstagedChanges);
+
+  if (stagedFiles.length === 0 && changesFiles.length === 0) {
     const message = state.fileFilter.trim()
       ? `No files match <span class="text-review-text">${escapeHtml(state.fileFilter.trim())}</span>.`
       : `No files in <span class="text-review-text">${escapeHtml(scopeLabel(state.currentScope).toLowerCase())}</span>.`;
@@ -547,15 +612,24 @@ function renderTree() {
       </div>
     `;
   } else if (state.fileFilter.trim()) {
-    renderSearchResults(visibleFiles);
+    renderSearchResults(stagedFiles, changesFiles);
   } else {
-    renderTreeNode(buildTree(visibleFiles), 0);
+    if (stagedFiles.length > 0) {
+      renderSectionHeader("Staged", stagedFiles.length);
+      renderTreeNode(buildTree(stagedFiles), 0, "staged");
+    }
+    if (changesFiles.length > 0) {
+      renderSectionHeader("Changes", changesFiles.length);
+      renderTreeNode(buildTree(changesFiles), 0, "changes");
+    }
   }
 
   sidebarTitleEl.textContent = scopeLabel(state.currentScope);
   const comments = state.comments.length;
-  const filteredSuffix = state.fileFilter.trim() ? ` • ${visibleFiles.length} shown` : "";
-  summaryEl.textContent = `${scopedFiles.length} file(s) • ${comments} comment(s)${state.overallComment ? " • overall note" : ""}${filteredSuffix}`;
+  const stagedCount = getScopedStagedFiles().length;
+  const changesCount = getScopedChangesFiles().length;
+  const filteredSuffix = state.fileFilter.trim() ? ` • ${stagedFiles.length + changesFiles.length} shown` : "";
+  summaryEl.textContent = `${stagedCount} staged • ${changesCount} unstaged • ${comments} comment(s)${state.overallComment ? " • overall note" : ""}${filteredSuffix}`;
   updateToggleButtons();
   updateSidebarLayout();
 }
@@ -943,6 +1017,14 @@ window.__reviewReceive = function (message) {
     if (state.activeFileId === message.fileId && state.currentScope === message.scope) {
       mountFile({ preserveScroll: false });
     }
+    return;
+  }
+
+  if (message.type === "files-refresh") {
+    reviewData.files = message.files;
+    state.activeFileId = null;
+    ensureActiveFileForScope();
+    renderAll({ restoreFileScroll: true });
   }
 };
 

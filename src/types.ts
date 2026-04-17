@@ -15,6 +15,8 @@ export interface ReviewFile {
   id: string;
   path: string;
   worktreeStatus: ChangeStatus | null;
+  isStaged: boolean;
+  hasUnstagedChanges: boolean;
   hasWorkingTreeFile: boolean;
   inGitDiff: boolean;
   inLastCommit: boolean;
@@ -56,7 +58,13 @@ export interface ReviewRequestFilePayload {
   scope: ReviewScope;
 }
 
-export type ReviewWindowMessage = ReviewSubmitPayload | ReviewCancelPayload | ReviewRequestFilePayload;
+export interface ReviewStagePayload {
+  type: "stage";
+  path: string;
+  action: "add" | "reset";
+}
+
+export type ReviewWindowMessage = ReviewSubmitPayload | ReviewCancelPayload | ReviewRequestFilePayload | ReviewStagePayload;
 
 export interface ReviewFileDataMessage {
   type: "file-data";
@@ -75,7 +83,12 @@ export interface ReviewFileErrorMessage {
   message: string;
 }
 
-export type ReviewHostMessage = ReviewFileDataMessage | ReviewFileErrorMessage;
+export interface ReviewFilesRefreshMessage {
+  type: "files-refresh";
+  files: ReviewFile[];
+}
+
+export type ReviewHostMessage = ReviewFileDataMessage | ReviewFileErrorMessage | ReviewFilesRefreshMessage;
 
 export interface ReviewWindowData {
   repoRoot: string;

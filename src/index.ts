@@ -1,7 +1,12 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey, truncateToWidth } from "@mariozechner/pi-tui";
 import { open, type GlimpseWindow } from "glimpseui";
-import { getReviewWindowData, loadReviewFileContents } from "./git.js";
+import {
+  getReviewWindowData,
+  loadReviewFileContents,
+  stageFile,
+  refreshFileData,
+} from "./git.js";
 import { composeReviewPrompt } from "./prompt.js";
 import type {
   ReviewCancelPayload,
@@ -9,6 +14,7 @@ import type {
   ReviewFileContents,
   ReviewHostMessage,
   ReviewRequestFilePayload,
+  ReviewStagePayload,
   ReviewSubmitPayload,
   ReviewWindowMessage,
 } from "./types.js";
@@ -24,6 +30,10 @@ function isCancelPayload(value: ReviewWindowMessage): value is ReviewCancelPaylo
 
 function isRequestFilePayload(value: ReviewWindowMessage): value is ReviewRequestFilePayload {
   return value.type === "request-file";
+}
+
+function isStagePayload(value: ReviewWindowMessage): value is ReviewStagePayload {
+  return value.type === "stage";
 }
 
 type WaitingEditorResult = "escape" | "window-settled";
@@ -208,10 +218,28 @@ export default function (pi: ExtensionAPI) {
           }
         };
 
+        const handleStage = async (message: ReviewStagePayload): Promise<void> => {
+          const result = await stageFile(pi, repoRoot, message.path, message.action);
+          if (!result.success) {
+            sendWindowMessage({ type: "file-error", requestId: "", fileId: "", scope: "git-diff", message: result.message });
+            return;
+          }
+          const { files: refreshedFiles } = await refreshFileData(pi, ctx.cwd);
+          fileMap.clear();
+          for (const file of refreshedFiles) {
+            fileMap.set(file.id, file);
+          }
+          sendWindowMessage({ type: "files-refresh", files: refreshedFiles });
+        };
+
         const onMessage = (data: unknown): void => {
           const message = data as ReviewWindowMessage;
           if (isRequestFilePayload(message)) {
             void handleRequestFile(message);
+            return;
+          }
+          if (isStagePayload(message)) {
+            void handleStage(message);
             return;
           }
           if (isSubmitPayload(message) || isCancelPayload(message)) {

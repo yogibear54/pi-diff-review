@@ -12,6 +12,8 @@ interface ChangedPath {
 interface ReviewFileSeed {
   path: string;
   worktreeStatus: ChangeStatus | null;
+  isStaged: boolean;
+  hasUnstagedChanges: boolean;
   hasWorkingTreeFile: boolean;
   inGitDiff: boolean;
   inLastCommit: boolean;
@@ -167,6 +169,8 @@ function createReviewFile(seed: ReviewFileSeed): ReviewFile {
     id: buildReviewFileId(seed.path, seed.hasWorkingTreeFile, seed.gitDiff, seed.lastCommit),
     path: seed.path,
     worktreeStatus: seed.worktreeStatus,
+    isStaged: seed.isStaged,
+    hasUnstagedChanges: seed.hasUnstagedChanges,
     hasWorkingTreeFile: seed.hasWorkingTreeFile,
     inGitDiff: seed.inGitDiff,
     inLastCommit: seed.inLastCommit,
@@ -263,6 +267,20 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
   const trackedDiffOutput = repositoryHasHead
     ? await runGit(pi, repoRoot, ["diff", "--find-renames", "-M", "--name-status", "HEAD", "--"])
     : "";
+  const stagedDiffOutput = repositoryHasHead
+    ? await runGit(pi, repoRoot, ["diff", "--cached", "--find-renames", "-M", "--name-status"])
+    : "";
+  const unstagedDiffOutput = await runGitAllowFailure(pi, repoRoot, ["diff", "--find-renames", "-M", "--name-status"]);
+  const stagedPaths = new Set(
+    parseNameStatus(stagedDiffOutput)
+      .map((change) => change.newPath ?? change.oldPath)
+      .filter((path) => path != null)
+  );
+  const unstagedPaths = new Set(
+    parseNameStatus(unstagedDiffOutput)
+      .map((change) => change.newPath ?? change.oldPath)
+      .filter((path) => path != null)
+  );
   const untrackedOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--others", "--exclude-standard"]);
   const trackedFilesOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--cached"]);
   const deletedFilesOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--deleted"]);
@@ -285,6 +303,8 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
     seeds.set(path, {
       path,
       worktreeStatus: null,
+      isStaged: false,
+      hasUnstagedChanges: false,
       hasWorkingTreeFile: true,
       inGitDiff: false,
       inLastCommit: false,
@@ -298,6 +318,8 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
     const seed = upsertSeed(seeds, key, () => ({
       path: key,
       worktreeStatus: null,
+      isStaged: false,
+      hasUnstagedChanges: false,
       hasWorkingTreeFile: change.newPath != null,
       inGitDiff: false,
       inLastCommit: false,
@@ -315,6 +337,8 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
     const seed = upsertSeed(seeds, key, () => ({
       path: key,
       worktreeStatus: null,
+      isStaged: false,
+      hasUnstagedChanges: false,
       hasWorkingTreeFile: change.newPath != null && currentPaths.includes(change.newPath),
       inGitDiff: false,
       inLastCommit: false,
@@ -323,6 +347,11 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
     }));
     seed.inLastCommit = true;
     seed.lastCommit = toComparison(change);
+  }
+
+  for (const [path] of seeds) {
+    seeds.get(path)!.isStaged = stagedPaths.has(path);
+    seeds.get(path)!.hasUnstagedChanges = unstagedPaths.has(path);
   }
 
   const files = [...seeds.values()]
@@ -364,3 +393,19 @@ export async function loadReviewFileContents(pi: ExtensionAPI, repoRoot: string,
     modifiedContent,
   };
 }
+
+export interface StageResult {
+  success: boolean;
+  message: string;
+}
+
+export async function stageFile(pi: ExtensionAPI, repoRoot: string, path: string, action: "add" | "reset"): Promise<StageResult> {
+  const args = action === "add" ? ["add", path] : ["reset", path];
+  const result = await pi.exec("git", args, { cwd: repoRoot });
+  if (result.code !== 0) {
+    return { success: false, message: result.stderr.trim() || result.stdout.trim() || `git ${args.join(" ")} failed` };
+  }
+  return { success: true, message: "" };
+}
+
+export { getReviewWindowData as refreshFileData };
