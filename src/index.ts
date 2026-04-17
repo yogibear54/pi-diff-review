@@ -230,6 +230,7 @@ export default function (pi: ExtensionAPI) {
           for (const file of refreshedFiles) {
             fileMap.set(file.id, file);
           }
+          contentCache.clear();
           sendWindowMessage({ type: "files-refresh", files: refreshedFiles });
         };
 
