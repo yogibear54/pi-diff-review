@@ -17,6 +17,7 @@ interface ReviewFileSeed {
   hasWorkingTreeFile: boolean;
   inGitDiff: boolean;
   inLastCommit: boolean;
+  isReviewable: boolean;
   gitDiff: ReviewFileComparison | null;
   lastCommit: ReviewFileComparison | null;
 }
@@ -174,6 +175,7 @@ function createReviewFile(seed: ReviewFileSeed): ReviewFile {
     hasWorkingTreeFile: seed.hasWorkingTreeFile,
     inGitDiff: seed.inGitDiff,
     inLastCommit: seed.inLastCommit,
+    isReviewable: seed.isReviewable,
     gitDiff: seed.gitDiff,
     lastCommit: seed.lastCommit,
   };
@@ -243,7 +245,6 @@ function isReviewableFilePath(path: string): boolean {
   ]);
 
   if (binaryExtensions.has(extension)) return false;
-  if (fileName.endsWith(".min.js") || fileName.endsWith(".min.css")) return false;
 
   return true;
 }
@@ -282,21 +283,18 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
       .filter((path) => path != null)
   );
   const untrackedOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--others", "--exclude-standard"]);
-  const untrackedPaths = new Set(parseTrackedPaths(untrackedOutput).filter(isReviewableFilePath));
+  const untrackedPaths = new Set(parseTrackedPaths(untrackedOutput));
   const trackedFilesOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--cached"]);
   const deletedFilesOutput = await runGitAllowFailure(pi, repoRoot, ["ls-files", "--deleted"]);
   const lastCommitOutput = repositoryHasHead
     ? await runGitAllowFailure(pi, repoRoot, ["diff-tree", "--root", "--find-renames", "-M", "--name-status", "--no-commit-id", "-r", "HEAD"])
     : "";
 
-  const worktreeChanges = mergeChangedPaths(parseNameStatus(trackedDiffOutput), parseUntrackedPaths(untrackedOutput))
-    .filter((change) => isReviewableFilePath(change.newPath ?? change.oldPath ?? ""));
+  const worktreeChanges = mergeChangedPaths(parseNameStatus(trackedDiffOutput), parseUntrackedPaths(untrackedOutput));
   const deletedPaths = new Set(parseTrackedPaths(deletedFilesOutput));
   const currentPaths = uniquePaths([...parseTrackedPaths(trackedFilesOutput), ...parseTrackedPaths(untrackedOutput)])
-    .filter((path) => !deletedPaths.has(path))
-    .filter(isReviewableFilePath);
-  const lastCommitChanges = parseNameStatus(lastCommitOutput)
-    .filter((change) => isReviewableFilePath(change.newPath ?? change.oldPath ?? ""));
+    .filter((path) => !deletedPaths.has(path));
+  const lastCommitChanges = parseNameStatus(lastCommitOutput);
 
   const seeds = new Map<string, ReviewFileSeed>();
 
@@ -309,6 +307,7 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
       hasWorkingTreeFile: true,
       inGitDiff: false,
       inLastCommit: false,
+      isReviewable: isReviewableFilePath(path),
       gitDiff: null,
       lastCommit: null,
     });
@@ -324,6 +323,7 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
       hasWorkingTreeFile: change.newPath != null,
       inGitDiff: false,
       inLastCommit: false,
+      isReviewable: isReviewableFilePath(key),
       gitDiff: null,
       lastCommit: null,
     }));
@@ -343,6 +343,7 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
       hasWorkingTreeFile: change.newPath != null && currentPaths.includes(change.newPath),
       inGitDiff: false,
       inLastCommit: false,
+      isReviewable: isReviewableFilePath(key),
       gitDiff: null,
       lastCommit: null,
     }));

@@ -357,6 +357,8 @@ function getRequestState(fileId, scope = state.currentScope, viewMode = state.ac
 
 function ensureFileLoaded(fileId, scope = state.currentScope, viewMode = state.activeViewMode) {
   if (!fileId) return;
+  const file = reviewData.files.find((f) => f.id === fileId);
+  if (file && !file.isReviewable) return;
   const key = cacheKey(scope, viewMode, fileId);
   if (state.fileContents[key] != null) return;
   if (state.fileErrors[key] != null) return;
@@ -444,6 +446,7 @@ function renderTreeNode(node, depth, section) {
     const requestState = getRequestState(file.id, state.currentScope);
     const loading = requestState.requestId != null && requestState.contents == null;
     const errored = requestState.error != null;
+    const reviewable = file.isReviewable !== false;
     const button = document.createElement("button");
     button.type = "button";
     button.className = [
@@ -453,7 +456,7 @@ function renderTreeNode(node, depth, section) {
     button.style.paddingLeft = `${(depth * indentPx) + 26}px`;
     button.innerHTML = `
       <span style="min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:6px;">
-        <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : "●"}</span>
+        <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : !reviewable ? "text-[#8b949e]/50" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : !reviewable ? "B" : "●"}</span>
         <span class="truncate ${file.id === state.activeFileId ? "font-medium" : ""}">${escapeHtml(child.name)}</span>
       </span>
       <span data-right class="flex shrink-0 items-center gap-1.5"></span>
@@ -506,6 +509,7 @@ function renderSearchResultRow(file, section) {
   const requestState = getRequestState(file.id, state.currentScope);
   const loading = requestState.requestId != null && requestState.contents == null;
   const errored = requestState.error != null;
+  const reviewable = file.isReviewable !== false;
   const button = document.createElement("button");
   button.type = "button";
   button.className = [
@@ -514,7 +518,7 @@ function renderSearchResultRow(file, section) {
   ].join(" ");
   button.innerHTML = `
     <span style="min-width:0;flex:1 1 auto;display:flex;align-items:center;gap:6px;">
-      <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : "●"}</span>
+      <span class="shrink-0 text-[10px] ${reviewed ? "text-[#3fb950]" : errored ? "text-red-400" : loading ? "text-[#58a6ff]" : !reviewable ? "text-[#8b949e]/50" : "text-transparent"}">${reviewed ? "●" : errored ? "!" : loading ? "…" : !reviewable ? "B" : "●"}</span>
       <span class="truncate text-[13px] ${file.id === state.activeFileId ? "font-medium" : ""}">${escapeHtml(baseName)}</span>
     </span>
     <span data-right class="flex shrink-0 items-center gap-1.5"></span>
@@ -765,7 +769,7 @@ function renderCommentDOM(comment, onDelete) {
 }
 
 function canCommentOnSide(file, side) {
-  if (!file) return false;
+  if (!file || !file.isReviewable) return false;
   const comparison = activeComparison();
   if (side === "original") {
     return comparison != null && comparison.hasOriginal;
@@ -893,6 +897,29 @@ function mountFile(options = {}) {
   }
 
   ensureFileLoaded(file.id, state.currentScope);
+
+  const displayPath = getScopeDisplayPath(file, state.currentScope);
+
+  if (!file.isReviewable) {
+    clearViewZones();
+    currentFileLabelEl.textContent = displayPath;
+    if (originalModel) originalModel.dispose();
+    if (modifiedModel) modifiedModel.dispose();
+    const binaryMessage = `Binary file: ${displayPath}\n\nThis file cannot be displayed in the text diff editor.`;
+    originalModel = monacoApi.editor.createModel(binaryMessage, "plaintext");
+    modifiedModel = monacoApi.editor.createModel(binaryMessage, "plaintext");
+    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+    applyEditorOptions();
+    updateDecorations();
+    renderFileComments();
+    requestAnimationFrame(() => {
+      layoutEditor();
+      if (options.restoreFileScroll) restoreFileScrollPosition();
+      if (options.preserveScroll) restoreScrollState(scrollState);
+      setTimeout(layoutEditor, 50);
+    });
+    return;
+  }
 
   const preserveScroll = options.preserveScroll === true;
   const scrollState = preserveScroll ? captureScrollState() : null;

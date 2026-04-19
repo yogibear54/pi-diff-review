@@ -22,6 +22,7 @@ export interface ReviewFile {
   hasWorkingTreeFile: boolean;
   inGitDiff: boolean;
   inLastCommit: boolean;
+  isReviewable: boolean;
   gitDiff: ReviewFileComparison | null;
   lastCommit: ReviewFileComparison | null;
 }
