@@ -333,6 +333,29 @@ export async function getReviewWindowData(pi: ExtensionAPI, cwd: string): Promis
     seed.gitDiff = toComparison(change);
   }
 
+  // Also include staged changes in git-diff scope (e.g., new files that have been staged)
+  const stagedChanges = parseNameStatus(stagedDiffOutput);
+  for (const change of stagedChanges) {
+    const key = change.newPath ?? change.oldPath ?? toDisplayPath(change);
+    const seed = upsertSeed(seeds, key, () => ({
+      path: key,
+      worktreeStatus: null,
+      isStaged: false,
+      hasUnstagedChanges: false,
+      hasWorkingTreeFile: change.newPath != null,
+      inGitDiff: false,
+      inLastCommit: false,
+      isReviewable: isReviewableFilePath(key),
+      gitDiff: null,
+      lastCommit: null,
+    }));
+    // Only set gitDiff if not already set by worktreeChanges (worktree takes precedence for status)
+    if (!seed.inGitDiff) {
+      seed.inGitDiff = true;
+      seed.gitDiff = toComparison(change);
+    }
+  }
+
   for (const change of lastCommitChanges) {
     const key = change.newPath ?? change.oldPath ?? toDisplayPath(change);
     const seed = upsertSeed(seeds, key, () => ({
